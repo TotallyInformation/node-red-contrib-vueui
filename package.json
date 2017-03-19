@@ -1,0 +1,52 @@
+{
+    "name": "node-red-contrib-vueui",
+    "version": "0.0.1",
+    "description": "A set of dashboard nodes for Node-RED",
+    "keywords": [
+        "node-red", "vue"
+    ],
+    "main": "none",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "contributors": [
+        {"name": "Julian Knight"}
+    ],
+    "license": "Apache-2.0",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/node-red/node-red-contrib-vueui.git"
+    },
+    "node-red": {
+        "version": ">=0.14.0",
+        "nodes": {
+            "vueui_template": "nodes/vueui_template.js"
+        },
+        "notyetnodes": {
+            "ui_base": "nodes/ui_base.js",
+            "ui_button": "nodes/ui_button.js",
+            "ui_dropdown": "nodes/ui_dropdown.js",
+			      "ui_switch": "nodes/ui_switch.js",
+            "ui_slider": "nodes/ui_slider.js",
+            "ui_numeric": "nodes/ui_numeric.js",
+            "ui_text_input": "nodes/ui_text_input.js",
+			      "ui_form": "nodes/ui_form.js",
+            "ui_text": "nodes/ui_text.js",
+            "ui_gauge": "nodes/ui_gauge.js",
+            "ui_chart": "nodes/ui_chart.js",
+            "ui_form": "nodes/ui_form.js",
+            "ui_toast": "nodes/ui_toast.js",
+            "ui_ui_control": "nodes/ui_ui_control.js",
+            "ui_template": "nodes/ui_template.js",
+            "ui_link": "nodes/ui_link.js",
+            "ui_tab": "nodes/ui_tab.js",
+            "ui_group": "nodes/ui_group.js"
+        }
+    },
+    "dependencies": {
+        "serve-static": "^1.10.0",
+        "socket.io": "^1.3.7"
+    },
+    "devDependencies": {
+    }
+}
