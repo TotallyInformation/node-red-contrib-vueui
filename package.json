@@ -21,7 +21,7 @@
     "node-red": {
         "version": ">=0.16.0",
         "nodes": {
-            "vueui_template": "nodes/vueui_template.js"
+            "vueui_template": "nodes/vueui.js"
         },
         "notyetnodes": {
             "ui_base": "nodes/ui_base.js",

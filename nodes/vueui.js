@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2015 Julian Knight (Totally Information)
+ * Copyright (c) 2017 Julian Knight (Totally Information)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,37 +16,24 @@
 
 'use strict'
 
+// Module name must match this nodes html file
+var moduleName = 'vueui_template';
+
 var inited = false;
-
-module.exports = function(RED) {
-    if (!inited) {
-        inited = true;
-        init(RED.server, RED.httpNode || RED.httpAdmin, RED.log, RED.settings);
-    }
-
-    return {
-        add: add,
-        addLink: addLink,
-        addBaseConfig: addBaseConfig,
-        emit: emit,
-        toNumber: toNumber.bind(null, false),
-        toFloat: toNumber.bind(null, true),
-        updateUi: updateUi
-    };
-};
+var settings = {};
 
 var serveStatic = require('serve-static'),
     socketio = require('socket.io'),
     path = require('path'),
     fs = require('fs'),
     events = require('events'),
-    dashboardVersion = require('./package.json').version
+    vueUiVersion = require('../package.json').version
 ;
 
 var io;
 
 var baseConfiguration = {
-    title: "Node-RED Dashboard",
+    title: "Node-RED Vue UI",
     theme: "theme-light"
 };
 
@@ -61,24 +48,95 @@ var removeStateTimeout = 1000;
 var ev = new events.EventEmitter();
 ev.setMaxListeners(0);
 
+module.exports = function(RED) {
+    'use strict'
+    RED.log.audit(RED.settings);
+    /*
+        {   "uiPort":1880,
+            "mqttReconnectTime":15000,
+            "serialReconnectTime":15000,
+            "debugMaxLength":1000,
+            "flowFilePretty":true,
+            "httpAdminRoot":"/red/",
+            "httpStatic":"public",
+            "functionGlobalContext":{},
+            "logging":{"console":{"level":"info","metrics":false,"audit":true}},
+            "settingsFile":"C:\\Users\\julia\\.node-red\\settings.js",
+            "httpRoot":"/",
+            "disableEditor":false,
+            "httpNodeRoot":"/",
+            "uiHost":"0.0.0.0",
+            "coreNodesDir":"C:\\Users\\julia\\AppData\\Roaming\\nvm\\v6.9.1\\node_modules\\node-red\\nodes",
+            "version":"0.16.2",
+            "userDir":"C:\\Users\\julia\\.node-red",
+            "level":98,
+            "timestamp":1490205280827}
+    */
+
+    function nodeGo(config) {
+        // Create the node
+        RED.nodes.createNode(this,config);
+
+        // Start Socket.IO
+        if (!io) { io = socketio.listen(RED.server); }
+
+        RED.log.audit(RED.settings);
+
+        // Create local copies of the node configuration (as defined in the .html file)
+        this.name   = config.name || ''
+        this.url    = config.url  || 'vueui'
+        this.format = config.format || ''
+ 
+        // copy "this" object in case we need it in context of callbacks of other functions.
+        var node = this;
+
+        var fullPath = join( RED.settings.httpNodeRoot, node.url );
+        RED.log.info('Vue UI Version ' + vueUiVersion + ' started at ' + fullPath);
+
+        // Initialise the static server and Socket.IO
+        if (!inited) {
+            inited = true;
+            init(RED, node);
+        }
+   }
+
+    // Register the node by name. This must be called before overriding any of the
+    // Node functions.
+    RED.nodes.registerType(moduleName,nodeGo);
+};
+
 // ========== UTILITY FUNCTIONS ================ //
-function init(server, app, log, redSettings) {
+
+//from: http://stackoverflow.com/a/28592528/3016654
+function join() {
+    var trimRegex = new RegExp('^\\/|\\/$','g'),
+    paths = Array.prototype.slice.call(arguments);
+    return '/'+paths.map(function(e){return e.replace(trimRegex,"");}).filter(function(e){return e;}).join('/');
+}
+
+function init(RED, node) {
+    var server = RED.server,
+        app = RED.httpNode || RED.httpAdmin,
+        log = RED.log,
+        redSettings = RED.settings
+    ;
+
     var uiSettings = redSettings.ui || {};
-    settings.path = uiSettings.path || 'ui';
-    settings.title = uiSettings.title || 'Node-RED Dashboard';
-    settings.defaultGroupHeader = uiSettings.defaultGroup || 'Default';
+    settings.path = uiSettings.path || 'vue';
+    //settings.title = uiSettings.title || 'Node-RED Vue UI';
 
     var fullPath = join(redSettings.httpNodeRoot, settings.path);
     var socketIoPath = join(fullPath, 'socket.io');
 
     io = socketio(server, {path: socketIoPath});
 
-    fs.stat(path.join(__dirname, 'dist/index.html'), function(err, stat) {
+    fs.stat(path.join(__dirname, 'dist', 'index.html'), function(err, stat) {
         if (!err) {
-            app.use(join(settings.path), serveStatic(path.join(__dirname, "dist")));
+            app.use( join( settings.path ), serveStatic( path.join( __dirname, 'dist' ) ) );
         } else {
             log.info("Using development folder");
-            app.use(join(settings.path), serveStatic(path.join(__dirname, "src")));
+            app.use( join( settings.path ), serveStatic( path.join( __dirname, 'src' ) ) );
+            /*
             var vendor_packages = [
                 'font-awesome',
                 'sprintf-js',
@@ -87,20 +145,21 @@ function init(server, app, log, redSettings) {
             vendor_packages.forEach(function (packageName) {
                 app.use(join(settings.path, 'vendor', packageName), serveStatic(path.join(__dirname, 'node_modules', packageName)));
             });
+            */
         }
     });
 
-    log.info("Vue UI Version " + dashboardVersion + " started at " + fullPath);
+    //log.info("Vue UI Version " + dashboardVersion + " started at " + fullPath);
 
     io.on('connection', function(socket) {
         //updateUi(socket);
         socket.on(updateValueEventName, ev.emit.bind(ev, updateValueEventName));
-        socket.on('ui-replay-state', function() {
+        socket.on('vueui-replay-state', function() {
             var ids = Object.getOwnPropertyNames(replayMessages);
             ids.forEach(function (id) {
                 socket.emit(updateValueEventName, replayMessages[id]);
             });
-            socket.emit('ui-replay-done');
+            socket.emit('vueui-replay-done');
         });
     });
 } // ---- End of INIT ---- //

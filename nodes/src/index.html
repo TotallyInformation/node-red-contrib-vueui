@@ -1,0 +1,45 @@
+<!doctype html>
+<html manifest="app.manifest">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, minimum-scale=1, initial-scale=1, user-scalable=yes">
+
+    <title>Node-RED Vue UI</title>
+    <meta name="description" content="Node-RED VueUI">
+
+    <!--<link rel="icon" href="/images/favicon.ico">-->
+
+    <!-- See https://goo.gl/OOhYW5
+        <link rel="manifest" href="/manifest.json">
+        <meta name="theme-color" content="#3f51b5">
+    -->
+
+    <!-- Add to homescreen for Chrome on Android. Fallback for manifest.json -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="Node-RED VueUI">
+
+    <!-- Add to homescreen for Safari on iOS -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Node-RED VueUI">
+
+    <!-- Homescreen icons
+        <link rel="apple-touch-icon" href="/images/manifest/icon-48x48.png">
+        <link rel="apple-touch-icon" sizes="72x72" href="/images/manifest/icon-72x72.png">
+        <link rel="apple-touch-icon" sizes="96x96" href="/images/manifest/icon-96x96.png">
+        <link rel="apple-touch-icon" sizes="144x144" href="/images/manifest/icon-144x144.png">
+        <link rel="apple-touch-icon" sizes="192x192" href="/images/manifest/icon-192x192.png">
+    -->
+
+</head>
+<body>
+    <p>Hi</p>
+    <div id="app">
+        <p>{{ message }}</p>
+    </div>
+
+    <script src="socket.io/socket.io.js"></script>
+    <script src="https://unpkg.com/vue/dist/vue.js"></script>
+    <script src="index.js"></script>
+
+</body></html>
