@@ -9,6 +9,11 @@ Instead, this uses the much simpler Vue.js framework and a simple configuration 
 and you will need to know a bit about Vue.js. But you should be able to use this to build anything you want to. Effectively, each instance of
 this node will create a new single-page app.
 
+## Current Status - Alpha
+
+The things that are currently working, not or partly working or yet to be done are recorded
+in the [Progress Project](https://github.com/TotallyInformation/node-red-contrib-vueui/projects/2).
+
 ## Pre-requisites
 
 VueUI requires Node-RED version 0.16 or more recent. It uses Vue.JS v2.

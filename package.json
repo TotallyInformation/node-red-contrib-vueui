@@ -1,6 +1,6 @@
 {
     "name": "node-red-contrib-vueui",
-    "version": "0.0.1",
+    "version": "0.0.2",
     "description": "A node for Node-RED to create a single page website using Vue.js - ALPHA only, not ready for use.",
     "keywords": [
         "node-red", "vue", "dashboard"

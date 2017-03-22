@@ -1,14 +1,14 @@
 /**
  * Copyright (c) 2017 Julian Knight (Totally Information)
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the Apache License, Version 2.0 (the 'License');
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
  * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
+ * distributed under the License is distributed on an 'AS IS' BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
@@ -19,7 +19,7 @@
 // Module name must match this nodes html file
 var moduleName = 'vueui_template';
 
-var inited = false;
+//var inited = false;
 var settings = {};
 
 var serveStatic = require('serve-static'),
@@ -32,73 +32,91 @@ var serveStatic = require('serve-static'),
 
 var io;
 
-var baseConfiguration = {
-    title: "Node-RED Vue UI",
-    theme: "theme-light"
-};
-
-var tabs = [];
-var links = [];
-var updateValueEventName = 'update-value';
-var currentValues = {};
-var replayMessages = {};
-var removeStateTimers = {};
-var removeStateTimeout = 1000;
-
+// Why?
 var ev = new events.EventEmitter();
 ev.setMaxListeners(0);
 
 module.exports = function(RED) {
     'use strict'
-    RED.log.audit(RED.settings);
-    /*
-        {   "uiPort":1880,
-            "mqttReconnectTime":15000,
-            "serialReconnectTime":15000,
-            "debugMaxLength":1000,
-            "flowFilePretty":true,
-            "httpAdminRoot":"/red/",
-            "httpStatic":"public",
-            "functionGlobalContext":{},
-            "logging":{"console":{"level":"info","metrics":false,"audit":true}},
-            "settingsFile":"C:\\Users\\julia\\.node-red\\settings.js",
-            "httpRoot":"/",
-            "disableEditor":false,
-            "httpNodeRoot":"/",
-            "uiHost":"0.0.0.0",
-            "coreNodesDir":"C:\\Users\\julia\\AppData\\Roaming\\nvm\\v6.9.1\\node_modules\\node-red\\nodes",
-            "version":"0.16.2",
-            "userDir":"C:\\Users\\julia\\.node-red",
-            "level":98,
-            "timestamp":1490205280827}
-    */
 
     function nodeGo(config) {
         // Create the node
         RED.nodes.createNode(this,config);
-
-        // Start Socket.IO
-        if (!io) { io = socketio.listen(RED.server); }
-
-        RED.log.audit(RED.settings);
 
         // Create local copies of the node configuration (as defined in the .html file)
         this.name   = config.name || ''
         this.url    = config.url  || 'vueui'
         this.format = config.format || ''
  
-        // copy "this" object in case we need it in context of callbacks of other functions.
+        // copy 'this' object in case we need it in context of callbacks of other functions.
         var node = this;
 
         var fullPath = join( RED.settings.httpNodeRoot, node.url );
+
+        // Start Socket.IO
+        if (!io) { io = socketio.listen(RED.server); }
+
+        // We need an http server to serve the page
+        var app = RED.httpNode || RED.httpAdmin
+
+        // Create a new, additional static http path to enable
+        // loading of static resources for vueui
+        fs.stat(path.join(__dirname, 'dist', 'index.html'), function(err, stat) {
+            // If the ./dist/index.html exists use the dist folder, 
+            // or use dev resources at ./src/
+            if (!err) {
+                app.use( join(node.url), serveStatic( path.join( __dirname, 'dist' ) ) );
+            } else {
+                RED.log.info('Using development folder');
+                app.use( join(node.url), serveStatic( path.join( __dirname, 'src' ) ) );
+                // Include vendor resource source paths if needed
+                /*
+                var vendor_packages = [
+                    'font-awesome',
+                    'sprintf-js',
+                    'jquery', 'jquery-ui'
+                ];
+                vendor_packages.forEach(function (packageName) {
+                    app.use(join(settings.path, 'vendor', packageName), serveStatic(path.join(__dirname, 'node_modules', packageName)));
+                });
+                */
+            }
+        });
+
         RED.log.info('Vue UI Version ' + vueUiVersion + ' started at ' + fullPath);
 
-        // Initialise the static server and Socket.IO
-        if (!inited) {
-            inited = true;
-            init(RED, node);
+        // handler function for node input events (when a node instance recieves a msg)
+        function nodeInputHandler(msg) {
+            // pass the msg payload to the ui
+            // TODO: This should probably have some safety validation on it
+            io.emit('vueui',msg);
         }
-   }
+        node.on( 'input', nodeInputHandler )
+        node.on('close', function() {
+            node.status({});
+            io.disconnect;
+        });
+
+        // When someone loads the page, it will try to connect over Socket.IO
+        // note that the connection returns the socket instance to monitor for responses from 
+        // the ui client instance
+        io.on('connection', function(socket) {
+            RED.log.audit( {'VueUI': 'Socket connected','clientCount':io.engine.clientsCount} );
+            node.status({fill:'green',shape:'dot',text:'connected '+io.engine.clientsCount});
+
+            socket.on('vueuiClient', function(msg) {
+                RED.log.audit( {'VueUI': 'Data recieved from client','data':msg} );
+                node.send(msg);
+            })
+
+            socket.on('disconnect', function(reason) {
+                RED.log.audit( {'VueUI': 'Socket disconnected','clientCount':io.engine.clientsCount,'reason':reason} );
+                node.removeListener('input', nodeInputHandler);
+                node.status({fill:'green',shape:'ring',text:'connected '+io.engine.clientsCount});
+            });
+        });
+
+   } // ---- End of nodeGo (initialised node instance) ---- //
 
     // Register the node by name. This must be called before overriding any of the
     // Node functions.
@@ -111,47 +129,33 @@ module.exports = function(RED) {
 function join() {
     var trimRegex = new RegExp('^\\/|\\/$','g'),
     paths = Array.prototype.slice.call(arguments);
-    return '/'+paths.map(function(e){return e.replace(trimRegex,"");}).filter(function(e){return e;}).join('/');
+    return '/'+paths.map(function(e){return e.replace(trimRegex,'');}).filter(function(e){return e;}).join('/');
 }
 
 function init(RED, node) {
+    /*
     var server = RED.server,
         app = RED.httpNode || RED.httpAdmin,
         log = RED.log,
         redSettings = RED.settings
     ;
+    */
 
-    var uiSettings = redSettings.ui || {};
-    settings.path = uiSettings.path || 'vue';
+    //var uiSettings = redSettings.ui || {};
+    //settings.path = uiSettings.path || 'vue';
     //settings.title = uiSettings.title || 'Node-RED Vue UI';
 
-    var fullPath = join(redSettings.httpNodeRoot, settings.path);
-    var socketIoPath = join(fullPath, 'socket.io');
+    //var fullPath = join(redSettings.httpNodeRoot, settings.path);
+    //var socketIoPath = join(fullPath, 'socket.io');
 
-    io = socketio(server, {path: socketIoPath});
+    //io = socketio(RED.server, {path: join(fullPath, 'socket.io')});
 
-    fs.stat(path.join(__dirname, 'dist', 'index.html'), function(err, stat) {
-        if (!err) {
-            app.use( join( settings.path ), serveStatic( path.join( __dirname, 'dist' ) ) );
-        } else {
-            log.info("Using development folder");
-            app.use( join( settings.path ), serveStatic( path.join( __dirname, 'src' ) ) );
-            /*
-            var vendor_packages = [
-                'font-awesome',
-                'sprintf-js',
-                'jquery', 'jquery-ui'
-            ];
-            vendor_packages.forEach(function (packageName) {
-                app.use(join(settings.path, 'vendor', packageName), serveStatic(path.join(__dirname, 'node_modules', packageName)));
-            });
-            */
-        }
-    });
 
-    //log.info("Vue UI Version " + dashboardVersion + " started at " + fullPath);
-
+    //log.info('Vue UI Version ' + dashboardVersion + ' started at ' + fullPath);
+    /*
     io.on('connection', function(socket) {
+        RED.log.audit( {'VueUI': 'Socket connected'} );
+
         //updateUi(socket);
         socket.on(updateValueEventName, ev.emit.bind(ev, updateValueEventName));
         socket.on('vueui-replay-state', function() {
@@ -162,6 +166,7 @@ function init(RED, node) {
             socket.emit('vueui-replay-done');
         });
     });
+    */
 } // ---- End of INIT ---- //
 
 // EOF
