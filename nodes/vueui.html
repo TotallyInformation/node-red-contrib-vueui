@@ -21,7 +21,7 @@
         defaults: {
             name: { value: '' },
             url: { value: 'vue' },
-            format: { value: '<p>{{ message }}</p>' },
+            template: { value: '<p>{{ payload }}</p>' },
         },
         inputs: 1,
         outputs: 1,
@@ -32,9 +32,9 @@
             var that = this;
 
             this.editor = RED.editor.createEditor({
-                id: 'node-input-format-editor',
+                id: 'node-input-template-editor',
                 mode: 'ace/mode/html',
-                value: $("#node-input-format").val()
+                value: $("#node-input-template").val()
             });
 
             RED.library.create({
@@ -57,7 +57,7 @@
                     this.noerr = annot.length;
                 }
             }
-            $("#node-input-format").val(this.editor.getValue());
+            $("#node-input-template").val(this.editor.getValue());
             delete this.editor;
         },
         oneditresize: function(size) {
@@ -92,11 +92,11 @@
 
     <!-- The actual template -->
     <div class="form-row">
-        <label for="node-input-format"><i class="fa fa-copy"></i> Template</label>
-        <input type="hidden" id="node-input-format">
+        <label for="node-input-template"><i class="fa fa-copy"></i> Template</label>
+        <input type="hidden" id="node-input-template">
     </div>
     <div class="form-row node-text-editor-row">
-        <div style="height:250px;" class="node-text-editor" id="node-input-format-editor" ></div>
+        <div style="height:250px;" class="node-text-editor" id="node-input-template-editor" ></div>
     </div>
 
 </script>

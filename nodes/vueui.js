@@ -46,7 +46,7 @@ module.exports = function(RED) {
         // Create local copies of the node configuration (as defined in the .html file)
         this.name   = config.name || ''
         this.url    = config.url  || 'vueui'
-        this.format = config.format || ''
+        this.template = config.template || '<p>{{ payload }}</p>'
  
         // copy 'this' object in case we need it in context of callbacks of other functions.
         var node = this;
@@ -87,6 +87,10 @@ module.exports = function(RED) {
 
         // handler function for node input events (when a node instance recieves a msg)
         function nodeInputHandler(msg) {
+            // Add the template to the msg
+            if ( ! ('template' in msg) ) {
+                msg.template = node.template;
+            }
             // pass the msg payload to the ui
             // TODO: This should probably have some safety validation on it
             io.emit('vueui',msg);
