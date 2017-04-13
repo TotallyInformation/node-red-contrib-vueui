@@ -37,36 +37,54 @@ var ev = new events.EventEmitter();
 ev.setMaxListeners(0);
 
 module.exports = function(RED) {
-    'use strict'
+    'use strict';
 
     function nodeGo(config) {
         // Create the node
-        RED.nodes.createNode(this,config);
+        RED.nodes.createNode(this, config);
 
         // Create local copies of the node configuration (as defined in the .html file)
-        this.name   = config.name || ''
-        this.url    = config.url  || 'vueui'
-        this.template = config.template || '<p>{{ payload }}</p>'
+        this.name   = config.name || '';
+        this.url    = config.url  || '/vueui';
+        this.template = config.template || '<p>{{ msg.payload }}</p>';
+        this.fwdInMessages = config.fwdInMessages;
+        this.lastMessage = { template: this.template };
  
         // copy 'this' object in case we need it in context of callbacks of other functions.
         var node = this;
 
-        var fullPath = join( RED.settings.httpNodeRoot, node.url );
+        // handler function for node input events (when a node instance receives a msg)
+        function nodeInputHandler(msg) {
+            // Add the template to the msg, unless it already has one
+            if ( !('template' in msg) ) {
+                msg.template = node.template;
+            }
 
-        // Start Socket.IO
-        if (!io) { io = socketio.listen(RED.server); }
+            // pass the complete msg object to the vue ui client
+            // TODO: This should probably have some safety validation on it
+            io.emit('vueui', msg);
+            this.lastMessage = msg;
+        }
+        node.on('input', nodeInputHandler);
+        node.on('close', function() {
+            node.removeListener('input', nodeInputHandler);
+            node.status({});
+            io.disconnect;
+            io = null;
+        })
+
 
         // We need an http server to serve the page
-        var app = RED.httpNode || RED.httpAdmin
+        var app = RED.httpNode || RED.httpAdmin;
 
         // Create a new, additional static http path to enable
         // loading of static resources for vueui
         fs.stat(path.join(__dirname, 'dist', 'index.html'), function(err, stat) {
-            // If the ./dist/index.html exists use the dist folder, 
-            // or use dev resources at ./src/
             if (!err) {
+                // If the ./dist/index.html exists use the dist folder... 
                 app.use( join(node.url), serveStatic( path.join( __dirname, 'dist' ) ) );
             } else {
+                // ... otherwise, use dev resources at ./src/
                 RED.log.info('Using development folder');
                 app.use( join(node.url), serveStatic( path.join( __dirname, 'src' ) ) );
                 // Include vendor resource source paths if needed
@@ -75,48 +93,42 @@ module.exports = function(RED) {
                     'font-awesome',
                     'sprintf-js',
                     'jquery', 'jquery-ui'
-                ];
+                ]
                 vendor_packages.forEach(function (packageName) {
                     app.use(join(settings.path, 'vendor', packageName), serveStatic(path.join(__dirname, 'node_modules', packageName)));
-                });
+                })
                 */
             }
-        });
+        })
 
+        var fullPath = join( RED.settings.httpNodeRoot, this.url );
         RED.log.info('Vue UI Version ' + vueUiVersion + ' started at ' + fullPath);
 
-        // handler function for node input events (when a node instance recieves a msg)
-        function nodeInputHandler(msg) {
-            // Add the template to the msg
-            if ( ! ('template' in msg) ) {
-                msg.template = node.template;
-            }
-            // pass the msg payload to the ui
-            // TODO: This should probably have some safety validation on it
-            io.emit('vueui',msg);
+        // Start Socket.IO
+        if (!io) {
+            io = socketio.listen(RED.server);
         }
-        node.on( 'input', nodeInputHandler )
-        node.on('close', function() {
-            node.status({});
-            io.disconnect;
-        });
 
         // When someone loads the page, it will try to connect over Socket.IO
         // note that the connection returns the socket instance to monitor for responses from 
         // the ui client instance
         io.on('connection', function(socket) {
-            RED.log.audit( {'VueUI': 'Socket connected','clientCount':io.engine.clientsCount} );
-            node.status({fill:'green',shape:'dot',text:'connected '+io.engine.clientsCount});
+            RED.log.audit({ 'VueUI': 'Socket connected', 'clientCount': io.engine.clientsCount });
+            node.status({ fill: 'green', shape: 'dot', text: 'connected '+io.engine.clientsCount });
+
+            // send the last message with the current template
+            io.emit('vueui', node.lastMessage);
 
             socket.on('vueuiClient', function(msg) {
-                RED.log.audit( {'VueUI': 'Data recieved from client','data':msg} );
-                node.send(msg);
-            })
+                RED.log.audit({ 'VueUI': 'Data recieved from client', 'data': msg });
+                if (node.fwdInMessages) {
+                    node.send(msg);
+                }
+            });
 
             socket.on('disconnect', function(reason) {
-                RED.log.audit( {'VueUI': 'Socket disconnected','clientCount':io.engine.clientsCount,'reason':reason} );
-                node.removeListener('input', nodeInputHandler);
-                node.status({fill:'green',shape:'ring',text:'connected '+io.engine.clientsCount});
+                RED.log.audit({ 'VueUI': 'Socket disconnected', 'clientCount': io.engine.clientsCount, 'reason': reason });
+                node.status({ fill: 'green', shape: 'ring', text: 'connected ' + io.engine.clientsCount });
             });
         });
 
@@ -124,15 +136,15 @@ module.exports = function(RED) {
 
     // Register the node by name. This must be called before overriding any of the
     // Node functions.
-    RED.nodes.registerType(moduleName,nodeGo);
-};
+    RED.nodes.registerType(moduleName, nodeGo);
+}
 
 // ========== UTILITY FUNCTIONS ================ //
 
 //from: http://stackoverflow.com/a/28592528/3016654
 function join() {
-    var trimRegex = new RegExp('^\\/|\\/$','g'),
-    paths = Array.prototype.slice.call(arguments);
+    var trimRegex = new RegExp('^\\/|\\/$','g');
+    var paths = Array.prototype.slice.call(arguments);
     return '/'+paths.map(function(e){return e.replace(trimRegex,'');}).filter(function(e){return e;}).join('/');
 }
 

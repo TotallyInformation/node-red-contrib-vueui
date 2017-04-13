@@ -17,11 +17,12 @@
 <script type="text/javascript">
     RED.nodes.registerType( 'vueui_template', {
         category: 'VueUI',
-        color: 'rgb( 63, 173, 181)',
+        color: 'rgb(65, 184, 131)',
         defaults: {
             name: { value: '' },
             url: { value: 'vue' },
-            template: { value: '<p>{{ payload }}</p>' },
+            template: { value: '<p>{{ msg.payload }}</p>' },
+            fwdInMessages: { value: true }
         },
         inputs: 1,
         outputs: 1,
@@ -30,6 +31,11 @@
         label: function() { return this.name || 'template'; },
         oneditprepare: function() {
             var that = this;
+
+            if (typeof this.fwdInMessages === 'undefined') {
+                this.fwdInMessages = true;
+                $('#node-input-fwdInMessages').prop('checked', true);
+            }
 
             this.editor = RED.editor.createEditor({
                 id: 'node-input-template-editor',
@@ -44,7 +50,6 @@
                 mode: 'ace/mode/html',
                 fields: [ 'name' ]
             });
-
             this.editor.focus();
         },
         oneditsave: function() {
@@ -57,7 +62,9 @@
                     this.noerr = annot.length;
                 }
             }
-            $("#node-input-template").val(this.editor.getValue());
+            this.template = this.editor.getValue();
+            console.dir(this);
+            $("#node-input-template").val(this.template);
             delete this.editor;
         },
         oneditresize: function(size) {
@@ -71,7 +78,7 @@
             $(".node-text-editor").css("height",height+"px");
             this.editor.resize();
         },
-        // Do any setup when node added to pallette
+        // Do any setup when node added to palette
         onpaletteadd: function() {
         },
     });
@@ -86,8 +93,14 @@
 
     <!-- Home "page" id - defines the URL used -->
     <div class="form-row">
-        <label for="node-input-url"><i class="fa fa-tag"></i> Name</label>
+        <label for="node-input-url"><i class="fa fa-tag"></i> Url</label>
         <input type="text" id="node-input-url">
+    </div>
+
+    <div class="form-row">
+        <label>&nbsp;</label>
+        <input type="checkbox" id="node-input-fwdInMessages" style="display:inline-block; width:auto; vertical-align:top;">
+        <label for="node-input-fwdInMessages" style="width:70%;"> Pass through messages from input.</label>
     </div>
 
     <!-- The actual template -->
