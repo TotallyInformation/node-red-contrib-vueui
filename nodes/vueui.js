@@ -55,6 +55,8 @@ module.exports = function(RED) {
 
         // handler function for node input events (when a node instance receives a msg)
         function nodeInputHandler(msg) {
+            RED.log.info('VUEUI:nodeInputHandler - recieved msg'); //debug
+
             // Add the template to the msg, unless it already has one
             if ( !('template' in msg) ) {
                 msg.template = node.template;
@@ -64,9 +66,14 @@ module.exports = function(RED) {
             // TODO: This should probably have some safety validation on it
             io.emit('vueui', msg);
             this.lastMessage = msg;
-        }
+
+        } // -- end of msg recieved processing -- //
         node.on('input', nodeInputHandler);
+
+        // Do something when stuff is closing down
         node.on('close', function() {
+            RED.log.info('VUEUI:on-close'); //debug
+
             node.removeListener('input', nodeInputHandler);
             node.status({});
             io.disconnect;
@@ -106,6 +113,7 @@ module.exports = function(RED) {
 
         // Start Socket.IO
         if (!io) {
+            RED.log.info('VUEUI:io - creating new IO server'); //debug
             io = socketio.listen(RED.server);
         }
 
@@ -113,21 +121,21 @@ module.exports = function(RED) {
         // note that the connection returns the socket instance to monitor for responses from 
         // the ui client instance
         io.on('connection', function(socket) {
-            RED.log.audit({ 'VueUI': 'Socket connected', 'clientCount': io.engine.clientsCount });
+            RED.log.audit({ 'VueUI': 'Socket connected', 'clientCount': io.engine.clientsCount }); //debug
             node.status({ fill: 'green', shape: 'dot', text: 'connected '+io.engine.clientsCount });
 
             // send the last message with the current template
             io.emit('vueui', node.lastMessage);
 
             socket.on('vueuiClient', function(msg) {
-                RED.log.audit({ 'VueUI': 'Data recieved from client', 'data': msg });
+                RED.log.audit({ 'VueUI': 'Data recieved from client', 'data': msg }); //debug
                 if (node.fwdInMessages) {
                     node.send(msg);
                 }
             });
 
             socket.on('disconnect', function(reason) {
-                RED.log.audit({ 'VueUI': 'Socket disconnected', 'clientCount': io.engine.clientsCount, 'reason': reason });
+                RED.log.audit({ 'VueUI': 'Socket disconnected', 'clientCount': io.engine.clientsCount, 'reason': reason }); //debug
                 node.status({ fill: 'green', shape: 'ring', text: 'connected ' + io.engine.clientsCount });
             });
         });
