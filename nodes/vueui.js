@@ -93,6 +93,7 @@ module.exports = function(RED) {
             }
             // pass the msg payload to the ui
             // TODO: This should probably have some safety validation on it
+            RED.log.audit( {'VueUI': 'Emitting msg','msg':msg} );
             io.emit('vueui',msg);
         }
         node.on( 'input', nodeInputHandler )
