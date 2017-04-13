@@ -45,9 +45,6 @@ var handleBeforeUpdate = function() {
     //}
 }
 var handleWatchMsg = function(newVal,oldVal){
-    // Track how many messages have been recieved
-    this.msgCounter++
-
     console.info('vueui:vm:watch:msg - ' + this.msgCounter)
     sendMsg(newVal)
 }
@@ -91,6 +88,9 @@ var io = io()
 // send a msg back to Node-RED
 // NR will generally expect the msg to contain a payload topic
 var sendMsg = function(msg) {
+    // Track how many messages have been recieved
+    vm.msgSentCounter++
+
     io.emit('vueuiClient', msg)
 }
 
@@ -123,6 +123,9 @@ io.on('connect', function() {
 
         // Use the remaining msg object as vue data
         if ( Object.getOwnPropertyNames(wsMsg).length > 0 ) {
+            // Track how many messages have been recieved
+            vm.msgCounter++
+
             //vm.$data.msg = wsMsg
             vm.updateMsg(wsMsg)
         }
