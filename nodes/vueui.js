@@ -84,6 +84,15 @@ module.exports = function(RED) {
         // We need an http server to serve the page
         var app = RED.httpNode || RED.httpAdmin;
 
+        // This runs when the vueui page loads - we'll use it at some point
+        // maybe to pass a "room" name in custom header for IO to use
+        // so that we can have multiple pages served
+        // @see https://expressjs.com/en/guide/using-middleware.html
+        app.use( join(node.url), function (req, res, next) {
+            console.log('Time:', Date.now())
+            next()
+        })
+
         // Create a new, additional static http path to enable
         // loading of static resources for vueui
         fs.stat(path.join(__dirname, 'dist', 'index.html'), function(err, stat) {

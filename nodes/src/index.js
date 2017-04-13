@@ -15,36 +15,41 @@
   limitations under the License.
 */
 
+// Ignore the non-production warning
 Vue.config.productionTip = false
 
-// Variables to hold msg data and template src
+// Variables to hold template src
 var vmTemplate = 'Node-RED Vue UI: No template provided.'
 var newTemplate = vmTemplate // Start with vm and new templates the same
-var vmData = { msg: { topic:'', payload:{} } }
 var vmComp = Vue.compile('<div id="app">' + vmTemplate + '</div>')
+
+// Define the data available to the Vue instance
+// WARNING: standard code CANNOT add to msg structure without using
+//          a setter in the Vue instance because Vue will not register
+//          changes to it. So you cant do msg.payload.fred = 'blah'
+//          you either have to totally replace msg.payload or msg
+//          or create a setter/computed in vm
+var vmData = { 
+    msg: { topic:'', payload:{} }, // default to a dummy msg 
+    msgCounter: 0,                 // track how many msg's recieved
+    msgSentCounter: 0,             // track how many msg's sent
+}
 
 var myCounter = 0
 
-/* Create a component to render the msg
-Vue.component('vueui', function(resolve, reject) {
-    var 
-    resolve({
-        props: ['templateSrc'],
-        data: function() { return vmData },
-        //template: this.templateSrc
-        render: compiledSrc.render,
-        staticRenderFns: compiledSrc.staticRenderFns
-    })
-})
-*/
-
-var watchMsg = function(newVal,oldVal){
-    console.info('vueui:vm:watch:msg')
-    console.dir(newVal)
-    console.dir(oldVal)
+var handleBeforeUpdate = function() {
+    console.info('vueui:vm:beforeUpdate')
+    // Send any UI changes to the data back to node-red
     //if (Object.getOwnPropertyNames(this.msg).length > 0) {
-        io.emit('vueuiClient', newVal)
+    //    io.emit('vueuiClient', this.msg)
     //}
+}
+var handleWatchMsg = function(newVal,oldVal){
+    // Track how many messages have been recieved
+    this.msgCounter++
+
+    console.info('vueui:vm:watch:msg - ' + this.msgCounter)
+    sendMsg(newVal)
 }
 
 // Create an instance of Vue
@@ -52,60 +57,52 @@ var vm = new Vue({
     el: '#app',
     data: function() { return vmData },
     // beforeUpdate is triggered just before the dom is updated
-    beforeUpdate: function() {
-        console.info('vueui:vm:beforeUpdate')
-        // Send any UI changes to the data back to node-red
-        if (Object.getOwnPropertyNames(this.msg).length > 0) {
-            io.emit('vueuiClient', this.msg)
-        }
-    },
+    beforeUpdate: handleBeforeUpdate,
     // watch only triggers if you update the exact thing you are watching
     // if you watch msg and update msg.cat, it wont trigger
+    // Use the deep option to override that
     watch: {
         'msg': {
-            handler: function(newVal,oldVal){
-                console.info('vueui:vm:watch:msg')
-                //io.emit('vueuiClient', newVal)
-            },
+            handler: handleWatchMsg,
             deep: true
-        },
-        //'msg.payload.counter': function(newVal,oldVal){
-        //    console.info('vueui:vm:watch:msg.payload.counter')
-        //},
+        }
     },
     // Called for exents triggered in UI, e.g. click. May be called manually too
     methods: {
-        updateMsg: function(event) {
-
+        updateMsg: function(msg) {
+            this.msg = msg
         },
         updateCounter: function(event) {
             console.info('vueui:vm:methods:updateCounter')
             this.msg.payload.counter++
         }
     },
-    //template: "<div id='app'><input v-model='compsrc'><vueui :template-src='compsrc'></vueui></div>"
-    //computed: {
-    //    newRenderFn: function() { return Vue.compile(this.compsrc).render },
-    //    newStaticFns: function() { return Vue.compile(this.compsrc).staticRenderFns }
-    //},
     render: vmComp.render,
     staticRenderFns: vmComp.staticRenderFns,
-
+    // Only in development mode
+    renderError (h, err) {
+        return h('pre', { style: { color: 'red' }}, err.stack)
+    }
 })
 
 // Create the socket
 var io = io()
 
+// send a msg back to Node-RED
+// NR will generally expect the msg to contain a payload topic
+var sendMsg = function(msg) {
+    io.emit('vueuiClient', msg)
+}
+
 // When the socket is connected .................
 io.on('connect', function() {
     console.log('SOCKET CONNECTED')
 
-    //io.emit('vueuiClient',{action:'connected'}) // debug - don't normally want to bombard the server
-
     // When Node-RED vueui template node sends a msg over Socket.IO...
     io.on('vueui', function(wsMsg) {
         console.info('vueui msg received')
-        console.log(JSON.stringify(wsMsg))
+        //console.log(JSON.stringify(wsMsg))
+        //console.dir(wsMsg)
 
         if ( 'template' in wsMsg ) {
             // Extract any template source from the msg, if passed
@@ -126,7 +123,8 @@ io.on('connect', function() {
 
         // Use the remaining msg object as vue data
         if ( Object.getOwnPropertyNames(wsMsg).length > 0 ) {
-            vm.$data.msg = wsMsg
+            //vm.$data.msg = wsMsg
+            vm.updateMsg(wsMsg)
         }
     }) // -- End of websocket recieve from Node-RED -- //
 
@@ -135,17 +133,20 @@ io.on('connect', function() {
 // When the socket is disconnected ..............
 io.on('disconnect', function() {
     console.log('SOCKET DISCONNECTED')
-
     //io.emit('vueuiClient',{action:'disconnected'}) // debug - don't normally want to bombard the server
 }) // --- End of socket disconnect processing ---
 
+/*
 setInterval(function(){
     //console.count('me')
     myCounter++
     //vm.$data.msg = { topic: "setInterval", payload: {counter: myCounter, some: "fred", cat:"bark"} }
-    vm.$data.msg.payload.counter = myCounter
+    //vm.msg.payload.counter = myCounter
+    vm.msg.payload = {counter: myCounter}
     //Vue.nextTick(function () {
     //    console.dir(vm.msg.payload)
     //})
 },10000)
+*/
+
 // EOF
