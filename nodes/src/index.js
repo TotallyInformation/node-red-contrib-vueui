@@ -1,3 +1,4 @@
+/*global Vue */
 /*
   Copyright (c) 2017 Julian Knight (Totally Information)
 
@@ -15,9 +16,10 @@
 */
 
 // Variables to hold msg data and template src
-var vmTemp = "<p>{{ msg.payload }}</p>"
+var vmTemplate = 'Node-RED Vue UI: No template provided.'
+var newTemplate = vmTemplate // Start with vm and new templates the same
 var vmData = { msg: {} }
-var vmComp = Vue.compile("<div id='app'>" + vmTemp + "</div>")
+var vmComp = Vue.compile('<div id="app">' + vmTemplate + '</div>')
 
 /* Create a component to render the msg
 Vue.component('vueui', function(resolve, reject) {
@@ -60,26 +62,36 @@ io.on('connect', function() {
 
     io.emit('vueuiClient',{action:'connected'})
 
+    // When Node-RED vueui template node sends a msg over Socket.IO...
     io.on('vueui', function(msg) {
-        // Extract any template source from the msg, if passed
-        var temp = msg.template
-        delete msg.template
-        console.log('vueui msg received')
+        console.info('vueui msg received')
         console.log(JSON.stringify(msg))
 
-        // If msg.template has changed, compile and replace existing template
-        if (temp !== vmTemp) {
-            vmTemp = temp
-            vmComp = Vue.compile("<div id='app'>" + vmTemp + "</div>")
-            vm.$options.render = vmComp.render
-            vm.$options.staticRenderFns = vmComp.newStaticFns
-            vm.$forceUpdate()
+        if ( 'template' in msg ) {
+            // Extract any template source from the msg, if passed
+            newTemplate = msg.template
+            delete msg.template
+
+            console.log(newTemplate)
+            console.log(vmTemplate) // NOTE: vmTemplate is changed by compile!
+
+            // If msg.template has changed, compile and replace existing template
+            if (newTemplate !== vmTemplate) {
+                console.info('vueui: recompiling template')
+
+                vmTemplate = newTemplate
+                vmComp = Vue.compile('<div id="app">' + vmTemplate + '</div>')
+                vm.$options.render = vmComp.render
+                vm.$options.staticRenderFns = vmComp.newStaticFns
+                vm.$forceUpdate()
+            }
         }
 
         // Use the remaining msg object as vue data
-        if (!temp || Object.getOwnPropertyNames(msg).length > 0)
+        if (!newTemplate || Object.getOwnPropertyNames(msg).length > 0)
             vm.$data.msg = msg
-    })
+    }) // -- End of websocket recieve from Node-RED -- //
+
 }) // --- End of socket connection processing ---
 
 // When the socket is disconnected ..............
