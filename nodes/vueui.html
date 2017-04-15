@@ -21,14 +21,14 @@
         defaults: {
             name: { value: '' },
             url: { value: 'vue' },
-            template: { value: '<p>{{ msg.payload }}</p>' },
+            template: { value: '<p>{{ msg }}</p>' },
             fwdInMessages: { value: true }
         },
         inputs: 1,
         outputs: 1,
         icon: "ui_template.png",
-        paletteLabel: 'template',
-        label: function() { return this.name || 'template'; },
+        paletteLabel: 'Vue Template',
+        label: function() { return this.name || 'VueUI'; },
         oneditprepare: function() {
             var that = this;
 
@@ -63,7 +63,6 @@
                 }
             }
             this.template = this.editor.getValue();
-            console.dir(this);
             $("#node-input-template").val(this.template);
             delete this.editor;
         },
@@ -93,7 +92,7 @@
 
     <!-- Home "page" id - defines the URL used -->
     <div class="form-row">
-        <label for="node-input-url"><i class="fa fa-tag"></i> Url</label>
+        <label for="node-input-url"><i class="fa fa-tag"></i> URL</label>
         <input type="text" id="node-input-url">
     </div>
 
@@ -115,22 +114,101 @@
 </script>
 
 <script type="text/x-red" data-help-name="vueui_template">
-    <p>The template widget can contain any valid html and Vue.JS directives.</p>
-    <p>This node can be used to create a dynamic user interface element that changes its appearence
-    based on the input message and can send back messages to Node-RED.</p>
-    <b>For example:</b><br>
-    <pre>&lt;div layout=&quot;row&quot; layout-align=&quot;space-between&quot;&gt;
-    &lt;p&gt;The number is&lt;/p&gt;
-    &lt;p ng-style=&quot;{color: (msg.payload || 0) % 2 === 0 ? 'green' : 'red'}&quot;&gt;
-        {{(msg.payload || 0) % 2 === 0 ? 'even' : 'odd'}}
-    &lt;/p&gt;
-    &lt;/div&gt;</pre>
-    Will display if the number received as <code>msg.payload</code> is even or odd. It will also
-    change the color of the text to green if the number is even or red if odd.<br><br>
-    <b>Sending a message:</b><br>
-    <pre>&lt;md-button ng-click=&quot;send({payload: 'Hello World'})&quot;&gt;
-    Click me to send a hello world
-    &lt;/md-button&gt;</pre>
-    Will display a button that when clicked will send a message with the payload <code>'Hello world'</code>.
+    <p>Creates a UI at a given URL</p>
+    <p>
+        This node can be used to create a dynamic user interface element that changes its 
+        appearence based on the input message and can send back messages to Node-RED.
+    </p>
+
+    <h3>Inputs</h3>
+    <p>
+        This node accepts any input <code>msg</code>. The msg will be passed in its entirety
+        to any connected clients. If passthrough is checked, the message will be reflected
+        back from <b>every</b> client after being processed by Vue.
+    </p>
+
+    <h3>Outputs</h3>
+    <p>
+        If passthough is checked, every client will return a msg when a msg is 
+        recieved by the node.
+    </p>
+    <p>
+        The client may change the content of the msg dynamically using any of 
+        VueJS's features. If the content of the msg changes in the client, it
+        is autmatically sent back to Node-RED.
+    </p>
+
+    <h3>Node Settings</h3>
+    <h4>Name</h4>
+    <p>A short description shown in the admin interface</p>
+    <h4>Library (icon)</h4>
+    <p>Save or retrieve template from library</p>
+    <h4>URL</h4>
+    <p>
+        The URL to use for the generated page. This is relative to the
+        <code>httpNodeRoot</code> or <code>httpRoot</code> Node-RED settings. <br />
+        Defaults to <a href="/vue"><code>vue</code></a>.
+    </p>
+    <h4>Pass through messages from input</h4>
+    <p>
+        If checked, any input msg is sent out to the UI and returned.<br />
+        Notes:
+    </p><ul>
+        <li>
+            If multiple clients are connected (see the status icon in the admin UI),
+            a msg is returned from each one so one input msg will generate multiple
+            outputs.
+        </li>
+        <li>
+            It is possible for the client to change the content of the msg so what
+            comes back may not be a copy of what goes in.
+        </li>
+    </ul>
+    <h4>Template</h4>
+    <p>
+        A VueJS template definition. Note that Mustache style tags are used to show
+        data available to the Vue instance. The template can contain any valid html 
+        and Vue.JS directives.
+    </p>
+    <p>
+        Note that, on deployment of the node, the msg is likely to be empty,
+        a dummy msg is pre-defined so that <code>{{msg}}</code>, <code>{{msg.payload}}</code>
+        and <code>{{msg.topic}}</code> will not output errors - <code>msg.topic</code>
+        is an empty string and <code>msg.payload</code> is an empty object.
+    </p>
+    <p>
+        If the input msg contains <code>msg.template</code>, then it will be used in 
+        preference to this parameter.
+    </p>
+    <h4>Pre-defined Vue data variables</h4>
+    <p>
+        The following data variables are pre-defined to the Vue instance:
+    </p>
+    <dl>
+        <dl>msg</dl>
+        <dd>
+            The whole msg object given to the node. Note that when the templates
+            change, they are sent to all connected clients using the msg but are
+            stripped out before being given to Vue.
+        </dd>
+    </dl>
+    <h4>Example Templates</h4>
+    <pre>
+&lt;!-- Show the whole msg object as text -->
+&lt;p>{{msg}}&lt;/p>
+&lt;!-- Show the msg.topic as text -->
+&lt;p>{{msg.topic}}&lt;/p>
+&lt;!-- Show the msg.payload as text -->
+&lt;p>{{msg.payload}}&lt;/p>
+&lt;!-- Show an element of msg.payload as text -->
+&lt;p>{{msg.payload.some}}&lt;/p>
+&lt;!-- Show an interactive button that triggers a VueJS method
+        defined in the passed code template -->
+&lt;button v-on:click="updateCounter()">Update Counter&lt;/button>
+    </pre>
+
+    <h3>Details</h3>
+    <p>
+        For more information, see the GitHub page for <a href="https://github.com/TotallyInformation/node-red-contrib-vueui">node-red-contrib-vueui</a>
     </p>
 </script>

@@ -37,6 +37,7 @@ var vmData = {
 
 var myCounter = 0
 
+// ---- Vue Instance Handler Functions ---- //
 var handleBeforeUpdate = function() {
     console.info('vueui:vm:beforeUpdate')
     // Send any UI changes to the data back to node-red
@@ -44,10 +45,11 @@ var handleBeforeUpdate = function() {
     //    io.emit('vueuiClient', this.msg)
     //}
 }
-var handleWatchMsg = function(newVal,oldVal){
+var handleWatchMsg = function(newVal, oldVal){
     console.info('vueui:vm:watch:msg - ' + this.msgCounter)
     sendMsg(newVal)
 }
+// ---- End Of Vue Instance Handler Functions ---- //
 
 // Create an instance of Vue
 var vm = new Vue({
