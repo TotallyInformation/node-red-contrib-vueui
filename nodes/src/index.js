@@ -19,7 +19,7 @@
 Vue.config.productionTip = false
 
 // Variables to hold template src
-var vmTemplate = 'Node-RED Vue UI: No template provided.'
+var vmTemplate = 'Node-RED Vue UI: No template provided.<p>{{ msg }}</p>'
 var newTemplate = vmTemplate // Start with vm and new templates the same
 var vmComp = Vue.compile('<div id="app">' + vmTemplate + '</div>')
 
@@ -102,34 +102,38 @@ io.on('connect', function() {
 
     // When Node-RED vueui template node sends a msg over Socket.IO...
     io.on('vueui', function(wsMsg) {
-        console.info('vueui msg received')
+        console.info('vueui:io.connect - msg received')
         //console.log(JSON.stringify(wsMsg))
-        //console.dir(wsMsg)
+        console.dir(wsMsg)
 
-        if ( 'template' in wsMsg ) {
-            // Extract any template source from the msg, if passed
-            newTemplate = wsMsg.template
-            delete wsMsg.template
+        if ( wsMsg !== null ) {
+            if ( 'template' in wsMsg ) {
+                console.info('vueui:io.connect - template in msg')
+                console.dir(wsMsg)
+                // Extract any template source from the msg, if passed
+                newTemplate = wsMsg.template
+                //delete wsMsg.template
 
-            // If msg.template has changed, compile and replace existing template
-            if (newTemplate !== vmTemplate) {
-                console.info('vueui: recompiling template')
+                // If msg.template has changed, compile and replace existing template
+                if (newTemplate !== vmTemplate) {
+                    console.info('vueui:io.connect - recompiling template')
 
-                vmTemplate = newTemplate
-                vmComp = Vue.compile('<div id="app">' + vmTemplate + '</div>')
-                vm.$options.render = vmComp.render
-                vm.$options.staticRenderFns = vmComp.newStaticFns
-                vm.$forceUpdate()
+                    vmTemplate = newTemplate
+                    vmComp = Vue.compile('<div id="app">' + vmTemplate + '</div>')
+                    vm.$options.render = vmComp.render
+                    vm.$options.staticRenderFns = vmComp.newStaticFns
+                    vm.$forceUpdate()
+                }
             }
-        }
 
-        // Use the remaining msg object as vue data
-        if ( Object.getOwnPropertyNames(wsMsg).length > 0 ) {
-            // Track how many messages have been recieved
-            vm.msgCounter++
+            // Use the remaining msg object as vue data
+            if ( Object.getOwnPropertyNames(wsMsg).length > 0 ) {
+                // Track how many messages have been recieved
+                vm.msgCounter++
 
-            //vm.$data.msg = wsMsg
-            vm.updateMsg(wsMsg)
+                //vm.$data.msg = wsMsg
+                vm.updateMsg(wsMsg)
+            }
         }
     }) // -- End of websocket recieve from Node-RED -- //
 
