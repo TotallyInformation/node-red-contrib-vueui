@@ -43,34 +43,56 @@ module.exports = function(RED) {
         // Create the node
         RED.nodes.createNode(this, config)
 
-        // Create local copies of the node configuration (as defined in the .html file)
-        this.name   = config.name || ''
-        this.url    = config.url  || 'vue'
-        this.fwdInMessages = config.fwdInMessages || true
-        // NOTE: When a node is redeployed - e.g. after the template is changed
-        //       it is totally torn down and rebuilt so we cannot ever know
-        //       whether the template was changed.
-        this.template = config.template || '<p>{{ msg }}</p>';
-        this.templateSent = false
-        // Keep track of last msg sent, on deployment is always reset so use the template
-        this.previousMsg = { 'template': this.template, '_fwdInMessages': this.fwdInMessages }
-
         // copy 'this' object in case we need it in context of callbacks of other functions.
         var node = this
 
+        // Create local copies of the node configuration (as defined in the .html file)
+        node.name   = config.name || ''
+        node.url    = config.url  || 'vue'
+        node.fwdInMessages = config.fwdInMessages || true
+        // NOTE: When a node is redeployed - e.g. after the template is changed
+        //       it is totally torn down and rebuilt so we cannot ever know
+        //       whether the template was changed.
+        node.template = config.template || '<p>{{ msg }}</p>';
+        node.templateSent = false
+
+        // Keep track of last msg sent, on deployment is always reset so use the template
+        node.previousMsg = { 
+            'template': node.template, '_fwdInMessages': node.fwdInMessages, '_shutdown': false,
+            'payload': {}, 'topic': ''
+        }
+
         // We need an http server to serve the page
         var app = RED.httpNode || RED.httpAdmin
+
+        // Use httNodeMiddleware function which is defined in settings.js
+        // as for the http in/out nodes
+        var httpMiddleware = function(req,res,next) { next() }
+        if (RED.settings.httpNodeMiddleware) {
+            if ( typeof RED.settings.httpNodeMiddleware === 'function' ) {
+                httpMiddleware = RED.settings.httpNodeMiddleware
+            }
+        }
+        
+        // This ExpressJS middleware runs when the vueui page loads - we'll use it at some point
+        // maybe to pass a "room" name in custom header for IO to use
+        // so that we can have multiple pages served
+        // @see https://expressjs.com/en/guide/using-middleware.html
+        function localMiddleware (req, res, next) {
+            RED.log.info('VUEUI:nodeGo:app.use - Req IP: ' + req.ip)
+            next()
+        }
 
         // Create a new, additional static http path to enable
         // loading of static resources for vueui
         fs.stat(path.join(__dirname, 'dist', 'index.html'), function(err, stat) {
             if (!err) {
                 // If the ./dist/index.html exists use the dist folder... 
-                app.use( join(node.url), serveStatic( path.join( __dirname, 'dist' ) ) );
+                app.use( join(node.url), httpMiddleware, localMiddleware, serveStatic( path.join( __dirname, 'dist' ) ) );
             } else {
                 // ... otherwise, use dev resources at ./src/
                 RED.log.audit({ 'Vue UI': 'Using development folder' });
-                app.use( join(node.url), serveStatic( path.join( __dirname, 'src' ) ) );
+                app.use( join(node.url), httpMiddleware, localMiddleware, serveStatic( path.join( __dirname, 'src' ) ) );
                 // Include vendor resource source paths if needed
                 /*
                 var vendor_packages = [
@@ -85,24 +107,21 @@ module.exports = function(RED) {
             }
         })
 
-        // This runs when the vueui page loads - we'll use it at some point
-        // maybe to pass a "room" name in custom header for IO to use
-        // so that we can have multiple pages served
-        // @see https://expressjs.com/en/guide/using-middleware.html
-        app.use( join(node.url), function (req, res, next) {
-            RED.log.info('VUEUI:nodeGo:app.use - Req IP: ' + req.ip)
-            next()
-        })
-
-        var fullPath = join( RED.settings.httpNodeRoot, this.url );
+        var fullPath = join( RED.settings.httpNodeRoot, node.url );
         RED.log.info('Vue UI - Version ' + vueUiVersion + ' started at ' + fullPath);
 
         // Start Socket.IO
         if (!io) {
             RED.log.audit({ 'Vue UI:io': 'Creating new IO server' }) //debug
-            io = socketio.listen(RED.server);
+            io = socketio.listen(RED.server); // listen === attach
             node.status({ fill: 'blue', shape: 'dot', text: 'Socket Created' })
         }
+        // Check that all incoming SocketIO data has the IO cookie
+        // TODO: Needs a bit more work to add some real security
+        io.use(function(socket, next){
+            if (socket.request.headers.cookie) return next();
+            next(new Error('VueUI:NodeGo:io.use - Authentication error'));
+        });
 
         // When someone loads the page, it will try to connect over Socket.IO
         // note that the connection returns the socket instance to monitor for responses from 
@@ -119,14 +138,14 @@ module.exports = function(RED) {
 
             // send the last message with the current template
             // NB: cannot survive redeployment of node instance so is defaulted to the template
-            if ( !('template' in node.previousMsg) ) {
-                RED.log.info('VUEUI:nodeGo:on.connection - adding template') //debug
+            //if ( !('template' in node.previousMsg) ) {
+                //RED.log.info('VUEUI:nodeGo:on.connection - adding template') //debug
                 node.previousMsg.template = node.template
                 node.previousMsg._fwdInMessages = node.fwdInMessages
-            } else {
-                RED.log.info('VUEUI:nodeGo:on.connection - previousMsg') //debug
-                console.dir(node.previousMsg)
-            }
+            //} else {
+            //    RED.log.info('VUEUI:nodeGo:on.connection - previousMsg') //debug
+            //    console.dir(node.previousMsg)
+            //}
             io.emit('vueui', node.previousMsg)
 
             // if the client sends a specific msg channel...
@@ -156,12 +175,12 @@ module.exports = function(RED) {
             // or we have already sent it
             if ( !('template' in msg) ) {
                 // Only send the template if we haven't yet sent it
-                if ( node.templateSent === false ) {
+                //if ( node.templateSent === false ) {
                     msg.template = node.template
-                    msg._fwdInMessages = node.fwdInMessages
                     node.templateSent = true
-                }
+                //}
             }
+            msg._fwdInMessages = node.fwdInMessages
 
             // Keep track of last msg so can resend if the client socket gets disconnected
             // or the client reloads the page.
@@ -175,21 +194,34 @@ module.exports = function(RED) {
         node.on('input', nodeInputHandler)
 
         // Do something when Node-RED is closing down
+        // which includes when this node instance is redeployed
         node.on('close', function() {
-            RED.log.info('VUEUI:nodeGo:on-close'); //debug
+            //RED.log.info('VUEUI:nodeGo:on-close'); //debug
+
+            // Let the clients know we are closing down
+            node.previousMsg._shutdown = true
+            io.emit('vueui', node.previousMsg)
 
             node.status({});
             node.removeListener('input', nodeInputHandler);
             node.templateSent = false
+
+            // TODO Do we need to remove the app.use paths too? YES!
+            // This code borrowed from the http nodes
+            app._router.stack.forEach(function(route,i,routes) {
+                if ( route.route && route.route.path === node.url ) {
+                    routes.splice(i,1);
+                }
+            });
+
             // Disconnect all clients
             // WARNING: TODO: If we do this, a client cannot reconnect after redeployment
             //                so the user has to reload the page
-            /*
+            //  They have to do this at the moment anyway so might as well.
             Object.keys(io.sockets.connected).forEach(function(id){
                 io.sockets.connected[id].disconnect(true)
             })
-            */
-            //io = null;
+            io = null
         })
 
    } // ---- End of nodeGo (initialised node instance) ---- //

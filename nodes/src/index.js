@@ -30,33 +30,39 @@ var vmComp = Vue.compile('<div id="app">' + vmTemplate + '</div>')
 //          you either have to totally replace msg.payload or msg
 //          or create a setter/computed in vm
 var vmData = { 
-    msg: {  }, // default to a dummy msg 
+    msg: { topic: '', payload: {} }, // default to a dummy msg 
     msgCounter: 0,                 // track how many msg's recieved
     msgSentCounter: 0,             // track how many msg's sent
     fwdInMessages: true,    // will we reflect input msg back out?
-    template: 'Node-RED Vue UI: No template provided.<p>{{ msg }}</p>'    // default to something
+    template: 'Node-RED Vue UI: No template provided.<p>{{ msg }}</p>',    // default to something
+    nrShutdown: false,
 }
 
 var myCounter = 0
 
 // ---- Vue Instance Handler Functions ---- //
 var handleBeforeUpdate = function() {
-    console.info('vueui:vm:beforeUpdate')
+    //console.info('vueui:vm:beforeUpdate')
     // Send any UI changes to the data back to node-red
     //if (Object.getOwnPropertyNames(this.msg).length > 0) {
     //    io.emit('vueuiClient', this.msg)
     //}
 }
 var handleWatchMsg = function(newVal, oldVal){
-    console.info('vueui:vm:watch:msg - ' + this.msgCounter)
+    //console.info('vueui:vm:watch:msg - ' + this.msgCounter)
     sendMsg(newVal)
 }
 var handleTemplateChg = function(newVal, oldVal){
-    console.info('vueui:vm:watch:templateChange')
+    //console.info('vueui:vm:watch:templateChange')
     vmComp = Vue.compile('<div id="app">' + newVal + '</div>')
     vm.$options.render = vmComp.render
     vm.$options.staticRenderFns = vmComp.newStaticFns
     vm.$forceUpdate()
+}
+var handleNrShutdown = function(newVal, oldVal){
+    if ( newVal === true ) {
+        vm.template = '<p style="border:2px solid red;margin:.5em;padding:.5em">Flow has stopped, please reload the page when restarted</p>' + vm.template
+    }
 }
 // ---- End Of Vue Instance Handler Functions ---- //
 
@@ -74,12 +80,20 @@ var vm = new Vue({
             handler: handleWatchMsg,
             deep: true
         },
-        'template': handleTemplateChg
+        'template': handleTemplateChg,
+        'nrShutdown': handleNrShutdown,
     },
     // Called for exents triggered in UI, e.g. click. May be called manually too
     methods: {
         updateMsg: function(msg) {
             this.msg = msg
+            /* The following doesn't help make things any more reactive
+            var keys = Object.keys(msg)
+            keys.forEach(function(key,i){
+                console.log(key)
+                vm.$set(vm.msg, key, msg[key])
+            })
+            */
         },
         updateCounter: function(event) {
             console.info('vueui:vm:methods:updateCounter')
@@ -99,8 +113,9 @@ var io = io()
 
 // send a msg back to Node-RED
 // NR will generally expect the msg to contain a payload topic
+// TODO: Needs a restrictor on it so it doesn't trigger on every keypress
 var sendMsg = function(msg) {
-    // Track how many messages have been recieved
+    // Track how many messages have been sent
     vm.msgSentCounter++
 
     io.emit('vueuiClient', msg)
@@ -113,27 +128,38 @@ io.on('connect', function() {
     // When Node-RED vueui template node sends a msg over Socket.IO...
     io.on('vueui', function(wsMsg) {
         console.info('vueui:io.connect - msg received')
-        console.dir(wsMsg)
+        //console.dir(wsMsg)
 
         if ( (wsMsg !== null) && (wsMsg !== '') ) {
             // Extract any template source from the msg, if passed & remove from msg
             // Let Vue handle the recompile of the new template
             if ( 'template' in wsMsg ) {
-                console.info('vueui:io.connect - template in msg')
-                //console.dir(wsMsg)
+                //console.info('vueui:io.connect:io.on - template in msg')
 
                 vm.template = wsMsg.template
                 delete wsMsg.template
+                //console.log(vm.template)
+                //console.dir(vm.$data)
             }
             // Do we need to reflect input msgs to output?
             if ( '_fwdInMessages' in wsMsg ) {
                 vm.fwdInMessages = wsMsg._fwdInMessages
                 delete wsMsg._fwdInMessages
             }
+            // Checking for NR shutdown or node redeployment
+            if ( '_shutdown' in wsMsg ) {
+                console.info('vueui:io.connect:io.on - Node-RED node shutting down')
+                if ( wsMsg._shutdown === true ) {
+                    vm.nrShutdown = true
+                }
+                delete wsMsg._shutdown
+            }
 
-            console.dir(Object.getOwnPropertyNames(wsMsg))
             // Use the remaining msg object as vue data
             if ( Object.getOwnPropertyNames(wsMsg).length > 0 ) {
+                //console.info('vueui:io.connect:io.on - Updating Vue msg')
+                //console.dir(wsMsg)
+
                 // Track how many messages have been recieved
                 vm.msgCounter++
 
@@ -149,6 +175,7 @@ io.on('connect', function() {
 io.on('disconnect', function() {
     console.log('SOCKET DISCONNECTED')
     //io.emit('vueuiClient',{action:'disconnected'}) // debug - don't normally want to bombard the server
+    vm.nrShutdown = true
 }) // --- End of socket disconnect processing ---
 
 /*
