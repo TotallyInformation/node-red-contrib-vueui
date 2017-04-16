@@ -30,9 +30,11 @@ var vmComp = Vue.compile('<div id="app">' + vmTemplate + '</div>')
 //          you either have to totally replace msg.payload or msg
 //          or create a setter/computed in vm
 var vmData = { 
-    msg: { topic:'', payload:{} }, // default to a dummy msg 
+    msg: {  }, // default to a dummy msg 
     msgCounter: 0,                 // track how many msg's recieved
     msgSentCounter: 0,             // track how many msg's sent
+    fwdInMessages: true,    // will we reflect input msg back out?
+    template: 'Node-RED Vue UI: No template provided.<p>{{ msg }}</p>'    // default to something
 }
 
 var myCounter = 0
@@ -49,6 +51,13 @@ var handleWatchMsg = function(newVal, oldVal){
     console.info('vueui:vm:watch:msg - ' + this.msgCounter)
     sendMsg(newVal)
 }
+var handleTemplateChg = function(newVal, oldVal){
+    console.info('vueui:vm:watch:templateChange')
+    vmComp = Vue.compile('<div id="app">' + newVal + '</div>')
+    vm.$options.render = vmComp.render
+    vm.$options.staticRenderFns = vmComp.newStaticFns
+    vm.$forceUpdate()
+}
 // ---- End Of Vue Instance Handler Functions ---- //
 
 // Create an instance of Vue
@@ -64,7 +73,8 @@ var vm = new Vue({
         'msg': {
             handler: handleWatchMsg,
             deep: true
-        }
+        },
+        'template': handleTemplateChg
     },
     // Called for exents triggered in UI, e.g. click. May be called manually too
     methods: {
@@ -103,29 +113,25 @@ io.on('connect', function() {
     // When Node-RED vueui template node sends a msg over Socket.IO...
     io.on('vueui', function(wsMsg) {
         console.info('vueui:io.connect - msg received')
-        //console.log(JSON.stringify(wsMsg))
         console.dir(wsMsg)
 
-        if ( wsMsg !== null ) {
+        if ( (wsMsg !== null) && (wsMsg !== '') ) {
+            // Extract any template source from the msg, if passed & remove from msg
+            // Let Vue handle the recompile of the new template
             if ( 'template' in wsMsg ) {
                 console.info('vueui:io.connect - template in msg')
-                console.dir(wsMsg)
-                // Extract any template source from the msg, if passed
-                newTemplate = wsMsg.template
-                //delete wsMsg.template
+                //console.dir(wsMsg)
 
-                // If msg.template has changed, compile and replace existing template
-                if (newTemplate !== vmTemplate) {
-                    console.info('vueui:io.connect - recompiling template')
-
-                    vmTemplate = newTemplate
-                    vmComp = Vue.compile('<div id="app">' + vmTemplate + '</div>')
-                    vm.$options.render = vmComp.render
-                    vm.$options.staticRenderFns = vmComp.newStaticFns
-                    vm.$forceUpdate()
-                }
+                vm.template = wsMsg.template
+                delete wsMsg.template
+            }
+            // Do we need to reflect input msgs to output?
+            if ( '_fwdInMessages' in wsMsg ) {
+                vm.fwdInMessages = wsMsg._fwdInMessages
+                delete wsMsg._fwdInMessages
             }
 
+            console.dir(Object.getOwnPropertyNames(wsMsg))
             // Use the remaining msg object as vue data
             if ( Object.getOwnPropertyNames(wsMsg).length > 0 ) {
                 // Track how many messages have been recieved
