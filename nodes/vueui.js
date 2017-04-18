@@ -54,13 +54,9 @@ module.exports = function(RED) {
         //       it is totally torn down and rebuilt so we cannot ever know
         //       whether the template was changed.
         node.template = config.template || '<p>{{ msg }}</p>';
-        node.templateSent = false
 
-        // Keep track of last msg sent, on deployment is always reset so use the template
-        node.previousMsg = { 
-            'template': node.template, '_fwdInMessages': node.fwdInMessages, '_shutdown': false,
-            'payload': {}, 'topic': ''
-        }
+        // Keep track of last msg sent (stored in global context on shutdown)
+        node.previousMsg = node.context().global.get("vueuimessage") || { 'payload': {}, 'topic': '' }
 
         // We need an http server to serve the page
         var app = RED.httpNode || RED.httpAdmin
@@ -115,102 +111,97 @@ module.exports = function(RED) {
             RED.log.audit({ 'Vue UI:io': 'Creating new IO server' }) //debug
             io = socketio.listen(RED.server); // listen === attach
             node.status({ fill: 'blue', shape: 'dot', text: 'Socket Created' })
+
+            // Check that all incoming SocketIO data has the IO cookie
+            // TODO: Needs a bit more work to add some real security
+            io.use(function(socket, next){
+                if (socket.request.headers.cookie) return next();
+                next(new Error('VueUI:NodeGo:io.use - Authentication error'));
+            });
+    
+            // When someone loads the page, it will try to connect over Socket.IO
+            // note that the connection returns the socket instance to monitor for responses from 
+            // the ui client instance
+            io.on('connection', function(socket) {
+                RED.log.audit({ 'VueUI': 'Socket connected', 'clientCount': io.engine.clientsCount,
+                                'ID': socket.id, 'Cookie': socket.handshake.headers.cookie }); //debug
+                node.status({ fill: 'green', shape: 'dot', text: 'connected '+io.engine.clientsCount })
+                //console.log('--socket.request.connection.remoteAddress--')
+                //console.dir(socket.request.connection.remoteAddress)
+                //console.log('--socket.handshake.address--')
+                //console.dir(socket.handshake.address)
+                //console.dir(io.sockets.connected)
+    
+                // First, send the current node configuration
+                io.emit('vueuiConfig', {
+                    id: node.id,
+                    url: node.url,
+                    name: node.name,
+                    template: node.template,
+                    fwdInMessages: node.fwdInMessages
+                })
+    
+                // Then, send the last message received by this node
+                io.emit('vueui', node.previousMsg)
+    
+                // if the client sends updated msg data...
+                socket.on('vueuiClient', function(msg) {
+                    RED.log.audit({ 'VueUI': 'Data recieved from client', 
+                                    'ID': socket.id, 'Cookie': socket.handshake.headers.cookie, 'data': msg }); //debug
+    
+                    // Save the msg, and send it to any downstream flows
+                    // TODO: This should probably have safety validations!
+                    node.previousMsg = msg
+                    node.send(msg);
+                })
+
+                socket.on('disconnect', function(reason) {
+                    RED.log.audit({ 'VueUI': 'Socket disconnected', 'clientCount': io.engine.clientsCount, 
+                                    'reason': reason, 'ID': socket.id, 'Cookie': socket.handshake.headers.cookie }); //debug
+                    node.status({ fill: 'green', shape: 'ring', text: 'connected ' + io.engine.clientsCount });
+                })
+            })
         }
-        // Check that all incoming SocketIO data has the IO cookie
-        // TODO: Needs a bit more work to add some real security
-        io.use(function(socket, next){
-            if (socket.request.headers.cookie) return next();
-            next(new Error('VueUI:NodeGo:io.use - Authentication error'));
-        });
-
-        // When someone loads the page, it will try to connect over Socket.IO
-        // note that the connection returns the socket instance to monitor for responses from 
-        // the ui client instance
-        io.on('connection', function(socket) {
-            RED.log.audit({ 'VueUI': 'Socket connected', 'clientCount': io.engine.clientsCount,
-                            'ID': socket.id, 'Cookie': socket.handshake.headers.cookie }); //debug
-            node.status({ fill: 'green', shape: 'dot', text: 'connected '+io.engine.clientsCount })
-            //console.log('--socket.request.connection.remoteAddress--')
-            //console.dir(socket.request.connection.remoteAddress)
-            //console.log('--socket.handshake.address--')
-            //console.dir(socket.handshake.address)
-            //console.dir(io.sockets.connected)
-
-            // send the last message with the current template
-            // NB: cannot survive redeployment of node instance so is defaulted to the template
-            //if ( !('template' in node.previousMsg) ) {
-                //RED.log.info('VUEUI:nodeGo:on.connection - adding template') //debug
-                node.previousMsg.template = node.template
-                node.previousMsg._fwdInMessages = node.fwdInMessages
-            //} else {
-            //    RED.log.info('VUEUI:nodeGo:on.connection - previousMsg') //debug
-            //    console.dir(node.previousMsg)
-            //}
-            io.emit('vueui', node.previousMsg)
-
-            // if the client sends a specific msg channel...
-            socket.on('vueuiClient', function(msg) {
-                RED.log.audit({ 'VueUI': 'Data recieved from client', 
-                                'ID': socket.id, 'Cookie': socket.handshake.headers.cookie, 'data': msg }); //debug
-
-                // Send out the message for downstream flows
-                // TODO: This should probably have safety validations!
-                node.send(msg);
-            });
-
-            socket.on('disconnect', function(reason) {
-                RED.log.audit({ 'VueUI': 'Socket disconnected', 'clientCount': io.engine.clientsCount, 
-                                'reason': reason, 'ID': socket.id, 'Cookie': socket.handshake.headers.cookie }); //debug
-                node.status({ fill: 'green', shape: 'ring', text: 'connected ' + io.engine.clientsCount });
-            });
-        });
 
         // handler function for node input events (when a node instance receives a msg)
+        node.on('input', nodeInputHandler)
         function nodeInputHandler(msg) {
             RED.log.info('VUEUI:nodeGo:nodeInputHandler - recieved msg') //debug
-            if (node.templateSent) RED.log.info('VUEUI:nodeGo:nodeInputHandler - Template already sent') //debug
-            else RED.log.info('VUEUI:nodeGo:nodeInputHandler - Template not yet sent') //debug
 
-            // Add the template to the msg, unless it already has one
-            // or we have already sent it
-            if ( !('template' in msg) ) {
-                // Only send the template if we haven't yet sent it
-                //if ( node.templateSent === false ) {
-                    msg.template = node.template
-                    node.templateSent = true
-                //}
-            }
-            msg._fwdInMessages = node.fwdInMessages
-
-            // Keep track of last msg so can resend if the client socket gets disconnected
-            // or the client reloads the page.
+            // Keep track of last msg received, so we can resend the data
+            // if the client socket gets disconnected or the client reloads the page.
             node.previousMsg = msg
 
             // pass the complete msg object to the vue ui client
             // TODO: This should probably have some safety validation on it
             io.emit('vueui', msg)
 
-        } // -- end of msg recieved processing -- //
-        node.on('input', nodeInputHandler)
+            // pass the incoming msg to the output flow, if configured to do so
+            if (node.fwdInMessages === true) {
+                node.send(msg)
+            }
+
+        } // -- end of incoming msg processing -- //
 
         // Do something when Node-RED is closing down
         // which includes when this node instance is redeployed
         node.on('close', function() {
-            //RED.log.info('VUEUI:nodeGo:on-close'); //debug
+            RED.log.info('VUEUI:nodeGo:on-close - saving previous msg'); //debug
+            // Save the last message before re-deploying
+            node.context().global.set("vueuimessage", node.previousMsg)
 
             // Let the clients know we are closing down
-            node.previousMsg._shutdown = true
-            io.emit('vueui', node.previousMsg)
+            //node.previousMsg._shutdown = true
+            io.emit('vueuiConfig', { shutdown: true })
 
             node.status({});
             node.removeListener('input', nodeInputHandler);
-            node.templateSent = false
 
             // TODO Do we need to remove the app.use paths too? YES!
             // This code borrowed from the http nodes
             app._router.stack.forEach(function(route,i,routes) {
                 if ( route.route && route.route.path === node.url ) {
-                    routes.splice(i,1);
+                    routes.splice(i,1)
                 }
             });
 
@@ -228,7 +219,10 @@ module.exports = function(RED) {
 
     // Register the node by name. This must be called before overriding any of the
     // Node functions.
-    RED.nodes.registerType(moduleName, nodeGo);
+    RED.nodes.registerType(moduleName, nodeGo)
+
+    // Register the url for saving/restoring template source from the library
+    RED.library.register("vueuitemplates")
 }
 
 // ========== UTILITY FUNCTIONS ================ //
