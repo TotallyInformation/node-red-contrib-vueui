@@ -1,5 +1,11 @@
 # node-red-contrib-vueui
 
+**2018-05-25** PLEASE NOTE THAT THIS PROJECT IS NO LONGER ACTIVE
+
+It is kept for reference but the approach turned out to be a dead-end. If you wish to integrate Vue.JS front-end pages with Node-RED, please consider [node-red-contrib-uibuilder](https://github.com/TotallyInformation/node-red-contrib-uibuilder) which is a much more flexible approach to the same problem and certainly supports Vue and many more front-end libraries (or indeed vanilla HTML/JS).
+
+------
+
 A Node-RED UI template based on Vue.js
 
 Designed as a simpler (for developers) alternative to the Node-RED Dashboard. Whereas Dashboard is great for creating a zero-code UI, it achieves
